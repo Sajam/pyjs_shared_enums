@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <TaskOptions>
   <TaskOptions>
-    <option name="arguments" value="$ProjectFileDir$/app/js/enums.js $FilePath$" />
+    <option name="arguments" value="$FilePath$ --output=$ProjectFileDir$/app/js/enums.js" />
     <option name="checkSyntaxErrors" value="true" />
-    <option name="description" value="Observing changes in Python files and synchronizing enums by compiling them to corresponding output JS file." />
+    <option name="description" value="Watching for changes in Python files and synchronizing enums by compiling them to corresponding output in JavaScript file." />
     <option name="exitCodeBehavior" value="ERROR" />
     <option name="fileExtension" value="py" />
     <option name="immediateSync" value="true" />
-    <option name="name" value="PyJS shared enums" />
+    <option name="name" value="PyJS shared enums - Python to JS" />
     <option name="output" value="" />
     <option name="outputFilters">
       <array />
