@@ -1,0 +1,96 @@
+#!/usr/bin/env python
+import os
+import sys
+import ast
+import re
+
+if len(sys.argv) < 3:
+    exit('Usage: {} /output/compiled/js/file/path.js /enums/input/file.py'.format(sys.argv[0]))
+
+ENUM_CLASS_NAME = 'Enum'
+
+# Must be a string that contains original's enum relative file path (enum_file_path).
+AS_JS_ENUM_START = '// {relative_enum_file_path}\n'
+
+# Must be unique string that indicates end of single enum definition.
+AS_JS_ENUM_END = '// {}\n\n'.format('-' * 80)
+
+ENUM_AS_JS = '// Line: {enum_lineno}\nvar {enum_name} = {{\n{enum_members}\n}};\n'
+ENUM_AS_JS = '{start}{enum}{end}'.format(start=AS_JS_ENUM_START, enum=ENUM_AS_JS, end=AS_JS_ENUM_END)
+
+BASE_PATH = os.path.normpath(os.path.dirname(__file__))
+JS_FILE_PATH = os.path.normpath(sys.argv[1])
+ENUM_FILE_PATH = os.path.normpath(sys.argv[2])
+RELATIVE_ENUM_FILE_PATH = ENUM_FILE_PATH.replace(os.path.commonprefix([BASE_PATH, ENUM_FILE_PATH]), '')
+
+
+class AstHelpers(object):
+    converters = {
+        ast.Num: lambda o: o.n,
+        ast.Str: lambda o: '\'{}\''.format(o.s),
+        ast.List: lambda o: '[{}]'.format(', '.join([str(AstHelpers.ast_to_js(el)) for el in o.elts]))
+    }
+
+    supported_ast_types = converters.keys()
+
+    @staticmethod
+    def ast_to_js(v):
+        try:
+            return AstHelpers.converters[type(v)](v)
+        except Exception:
+            return v
+
+    @staticmethod
+    def get_classes_that_inherits_from(node, class_name):
+        classes = []
+
+        for n in ast.walk(node):
+            if isinstance(n, ast.ClassDef):
+                classes.append(n)
+
+        return filter(lambda o: any([b.id == class_name for b in o.bases]), classes)
+
+    @staticmethod
+    def get_assignments(node):
+        assignments = []
+
+        for n in node:
+            if isinstance(n, ast.Assign):
+                for t in n.targets:
+                    assignments.append([t.id, n.value])
+
+        return filter(lambda i: isinstance(i[1], tuple(AstHelpers.supported_ast_types)), assignments)
+
+with open(ENUM_FILE_PATH, 'r') as enums_input_file, open(JS_FILE_PATH, 'rw+') as js_file:
+    # Prepare files - read contents and truncate output JS file (we have a copy in memory).
+    enums_input_file_contents = enums_input_file.read()
+    js_file_contents = js_file.read()
+    js_file.truncate(0)
+    js_file.seek(0)
+
+    # Remove all enums that come from enum input file (they will be updated).
+    input_file_enums_search_pattern = re.compile('{start}(?:.*?){end}'.format(
+        start=re.escape(AS_JS_ENUM_START.format(relative_enum_file_path=RELATIVE_ENUM_FILE_PATH)),
+        end=re.escape(AS_JS_ENUM_END)), re.DOTALL | re.MULTILINE)
+    js_file_contents = re.sub(input_file_enums_search_pattern, '', js_file_contents)
+
+    enum_file_tree = ast.parse(enums_input_file_contents)
+    enum_file_enums = AstHelpers.get_classes_that_inherits_from(enum_file_tree, ENUM_CLASS_NAME)
+
+    for enum in enum_file_enums:
+        enum_members = AstHelpers.get_assignments(enum.body)
+        enum_members_as_js_strings_list = ['\t{}: {}'.format(k, AstHelpers.ast_to_js(v))
+                                           for k, v in dict(enum_members).iteritems()]
+
+        enum_as_js = ENUM_AS_JS.format(
+            relative_enum_file_path=RELATIVE_ENUM_FILE_PATH,
+            enum_lineno=enum.lineno,
+            enum_name=enum.name,
+            enum_members=',\n'.join(enum_members_as_js_strings_list)
+        )
+
+        js_file_contents += enum_as_js
+
+    js_file.write(js_file_contents)
+
+exit(0)
